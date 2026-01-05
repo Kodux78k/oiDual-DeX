@@ -4,7 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>InfoDose · Neural Deck (Upgrade)</title>
-  <meta name="theme-color" content="#050811" />
+  <link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#050811">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('Service Worker Registered'));
+  }
+</script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
   <style>
     :root {
