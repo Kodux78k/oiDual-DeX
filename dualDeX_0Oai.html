@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>InfoDose · AppDeck (Refatorado)</title>
+  <meta name="theme-color" content="#050811" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap">
+  <style>
+    /* =========================
+       THEME: SOLAR NEBULA (refatorado)
+    ========================= */
+    :root{
+      --bg-deep:#050811; --panel:rgba(20,24,35,0.95); --primary:#00f5ff;
+      --secondary:#ff4bff; --text:#e4ecff; --muted:#6b7280; --danger:#ff4b6b;
+      --glass-border:rgba(255,255,255,0.06);
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%}
+    body{
+      margin:0;padding:0;background:var(--bg-deep);color:var(--text);
+      font-family:'Montserrat',sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden;
+    }
+    .nebula{position:fixed;top:-50%;left:-50%;width:200%;height:200%;
+      background:radial-gradient(circle at 50% 50%, rgba(0,245,255,0.03), transparent 60%);
+      z-index:-1;pointer-events:none;animation:pulse 10s infinite alternate;}
+    @keyframes pulse{from{opacity:0.5;transform:scale(1);}to{opacity:0.8;transform:scale(1.05);}}
+
+    .top-bar{padding:15px 20px;display:flex;justify-content:space-between;align-items:center;
+      background:linear-gradient(to bottom, rgba(5,8,17,0.95), transparent);z-index:10;border-bottom:1px solid rgba(255,255,255,0.03)}
+    .brand{font-weight:800;letter-spacing:1px;font-size:0.9rem;color:var(--text);text-transform:uppercase}
+    .brand span{color:var(--primary)}
+    .clock{font-family:'JetBrains Mono',monospace;font-size:0.8rem;color:var(--primary);opacity:0.9}
+
+    /* grid + groups */
+    .app-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+    .app-scroll{flex:1;overflow:auto;padding:30px 20px}
+    .group{margin-bottom:18px}
+    .group-header{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:12px;
+      background:rgba(255,255,255,0.02);margin-bottom:12px;cursor:pointer}
+    .group-title{font-weight:700;color:var(--text)}
+    .group-count{font-size:0.85rem;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:25px 15px;align-content:start}
+
+    .app-card{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;position:relative;transition:transform .18s}
+    .app-card:hover{transform:translateY(-6px)}
+    .app-card.selected{outline:3px solid rgba(0,245,255,0.12);border-radius:14px}
+
+    .app-icon{width:68px;height:68px;border-radius:18px;background:rgba(255,255,255,0.03);
+      border:1px solid var(--glass-border);display:flex;align-items:center;justify-content:center;font-size:2rem;
+      box-shadow:0 4px 15px rgba(0,0,0,0.3);position:relative;overflow:hidden}
+    .app-name{font-size:0.72rem;text-align:center;color:var(--text);font-weight:600;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0.85;width:80px}
+
+    .type-dot{position:absolute;bottom:5px;right:5px;width:8px;height:8px;border-radius:50%;box-shadow:0 0 6px currentColor}
+    .type-file{background:var(--secondary);color:var(--secondary)}
+    .type-url{background:var(--primary);color:var(--primary)}
+    .type-fusion{background:#ffd166;color:#ffd166}
+
+    .delete-btn{position:absolute;top:-8px;left:-8px;background:var(--danger);color:white;width:22px;height:22px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;font-size:13px;border:none;box-shadow:0 2px 5px rgba(0,0,0,0.5);z-index:5;transform:scale(0);transition:.18s}
+    body.editing .delete-btn{transform:scale(1)}
+    body.editing .app-card{animation:shake .3s infinite}
+    @keyframes shake{0%{transform:rotate(0deg)}25%{transform:rotate(1deg)}75%{transform:rotate(-1deg)}}
+
+    /* FAB: Injetar */
+    .fab{position:fixed;bottom:30px;right:30px;width:64px;height:64px;border-radius:50%;background:var(--primary);color:#000;
+      border:none;box-shadow:0 10px 30px rgba(0,245,255,0.22);font-size:1.6rem;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:40}
+    .fab .label{display:none}
+    .fab:hover{transform:scale(1.06)rotate(10deg)}
+
+    /* Modal / preview */
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(6px);z-index:100;opacity:0;pointer-events:none;display:flex;align-items:center;justify-content:center;transition:.22s}
+    .modal-overlay.active{opacity:1;pointer-events:auto}
+    .modal-card{width:92%;max-width:480px;background:#0f1219;border:1px solid var(--glass-border);border-radius:18px;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+    .modal-title{margin:0 0 14px 0;font-size:1.05rem;color:var(--primary);text-align:left}
+    .row{display:flex;gap:10px;align-items:center}
+    .preview-thumb{width:64px;height:64;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.03);display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.02)}
+    .preview-meta{flex:1}
+    .muted{color:var(--muted);font-size:0.85rem}
+
+    .form-label{display:block;font-size:0.72rem;color:var(--muted);margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;font-weight:700}
+    .glass-input{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);color:white;padding:10px;border-radius:10px;outline:none}
+    .btn{padding:12px 14px;border-radius:12px;border:none;font-weight:700;cursor:pointer}
+    .btn-primary{background:var(--primary);color:#000}
+    .btn-ghost{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.02)}
+
+    .viewer{position:fixed;inset:0;z-index:200;background:#000;transform:translateY(100%);transition:transform .36s cubic-bezier(.32,.72,0,1);display:flex;flex-direction:column}
+    .viewer.active{transform:translateY(0)}
+    .viewer-bar{height:54px;background:#0a0a0a;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+    .viewer-title{font-size:0.9rem;font-weight:700;color:var(--text)}
+    .viewer-close{background:rgba(255,255,255,0.06);border:none;color:white;width:36px;height:36px;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+    #appFrame{flex:1;border:none;width:100%;height:100%}
+
+    .tabs{display:flex;gap:6px;margin-bottom:14px}
+    .tab{flex:1;padding:8px;border-radius:10px;background:transparent;border:none;color:var(--muted);font-weight:700;cursor:pointer}
+    .tab.active{background:rgba(255,255,255,0.06);color:var(--text)}
+    .empty-state{grid-column:1/-1;text-align:center;color:var(--muted);margin-top:80px;display:flex;flex-direction:column;align-items:center;gap:12px}
+    .empty-icon{font-size:44px;opacity:0.28}
+    .fuse-bar{position:fixed;left:20px;bottom:30px;z-index:45;display:flex;gap:10px}
+    .fuse-btn{padding:12px 14px;border-radius:12px;border:none;background:#ffd166;color:#000;font-weight:800;cursor:pointer}
+  </style>
+</head>
+<body>
+
+  <div class="nebula"></div>
+
+  <div class="top-bar">
+    <div class="brand">InfoDose <span>Deck</span></div>
+    <div class="clock" id="clock">00:00</div>
+  </div>
+
+  <div class="app-area">
+    <div class="app-scroll" id="appScroll">
+      <!-- groups rendered here -->
+    </div>
+  </div>
+
+  <!-- FAB: Injetar (lê clipboard, fallback modal) -->
+  <button class="fab" id="injectFab" title="Injetar App (lê clipboard)">
+    ⧉
+    <span class="label">Injetar</span>
+  </button>
+
+  <!-- Modal: Generic + Injection preview -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div id="modalContent">
+        <!-- dynamic content inserted -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Viewer -->
+  <div class="viewer" id="viewer">
+    <div class="viewer-bar">
+      <div class="viewer-title" id="viewTitle">App Running</div>
+      <button class="viewer-close" onclick="UI.closeViewer()">✕</button>
+    </div>
+    <iframe id="appFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
+  </div>
+
+  <!-- Fuse bar -->
+  <div class="fuse-bar" id="fuseBar" style="display:none">
+    <button class="fuse-btn" onclick="Engine.fuseSelected()">Fundir Selecionados</button>
+    <button class="btn btn-ghost" onclick="UI.clearSelection()">Limpar</button>
+  </div>
+
+<script>
+/* =========================================================
+   Engine: IndexedDB storage e helpers (refatorado)
+   - apps stored as {id, title, iconSVG, thumbDataUrl, type, content, domain, timestamp, fusion}
+========================================================= */
+const DB = { name: 'InfoDoseDeckDB', version: 1, store: 'apps' };
+const Engine = {
+  db: null,
+  init(){
+    return new Promise((resolve)=>{
+      const req = indexedDB.open(DB.name, DB.version);
+      req.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains(DB.store)){
+          db.createObjectStore(DB.store, { keyPath: 'id', autoIncrement:true });
+        }
+      };
+      req.onsuccess = (e)=>{ this.db = e.target.result; this.loadApps(); resolve(); };
+      req.onerror = (e)=>{ console.error('IDB error', e); resolve(); };
+    })
+  },
+
+  put(app){
+    return new Promise((res,rej)=>{
+      const tx = this.db.transaction(DB.store,'readwrite');
+      const store = tx.objectStore(DB.store);
+      const r = store.add(app);
+      r.onsuccess = ()=>{ tx.oncomplete = ()=>{ this.loadApps(); res(r.result); } };
+      r.onerror = (e)=>{ console.error(e); rej(e) };
+    })
+  },
+
+  update(app){
+    return new Promise((res,rej)=>{
+      const tx = this.db.transaction(DB.store,'readwrite');
+      const store = tx.objectStore(DB.store);
+      const r = store.put(app);
+      r.onsuccess = ()=>{ tx.oncomplete = ()=>{ this.loadApps(); res(); } };
+      r.onerror = (e)=>{ console.error(e); rej(e) };
+    })
+  },
+
+  delete(id){
+    if(!confirm('Desintegrar este módulo permanentemente?')) return;
+    const tx = this.db.transaction(DB.store,'readwrite');
+    tx.objectStore(DB.store).delete(id);
+    tx.oncomplete = ()=>{ UI.clearSelection(); this.loadApps() };
+  },
+
+  getAll(){
+    return new Promise((res,rej)=>{
+      const tx = this.db.transaction(DB.store,'readonly');
+      const req = tx.objectStore(DB.store).getAll();
+      req.onsuccess = ()=>res(req.result);
+      req.onerror = (e)=>rej(e);
+    })
+  },
+
+  async loadApps(){
+    const items = await this.getAll();
+    UI.renderGroups(items || []);
+  },
+
+  async launch(id){
+    const tx = this.db.transaction(DB.store,'readonly');
+    const req = tx.objectStore(DB.store).get(id);
+    req.onsuccess = ()=>{
+      const app = req.result;
+      if(!app) return;
+      let finalUrl;
+      if(app.type === 'file' && app.content){
+        const blob = new Blob([app.content],{type:'text/html'});
+        finalUrl = URL.createObjectURL(blob);
+      } else if(app.type === 'fusion' && app.compositeUrls && app.compositeUrls.length){
+        // For fusion of URLs, open first url (could create selector)
+        finalUrl = app.compositeUrls[0];
+      } else {
+        finalUrl = app.content;
+      }
+      UI.openViewer(app.title, finalUrl);
+    };
+  },
+
+  /* Fuse selected apps: create single new app with merged metadata */
+  async fuseSelected(){
+    const sel = UI.selectedIds.slice();
+    if(sel.length < 2){ alert('Selecione pelo menos 2 módulos para fundir.'); return; }
+    // Retrieve objects
+    const tx = this.db.transaction(DB.store,'readonly');
+    const store = tx.objectStore(DB.store);
+    const promises = sel.map(id => new Promise((res)=>{ const r = store.get(id); r.onsuccess = ()=>res(r.result); }));
+    const apps = await Promise.all(promises);
+
+    // Build fused app
+    const title = apps.map(a=>a.title).join(' + ');
+    // fuse icon: simple composite color tag and fusion type
+    const iconSVG = UI.makeCompositeIconSVG(apps);
+    const domainSet = new Set(apps.map(a=>a.domain).filter(Boolean));
+    // If all are files, concatenate content; else create composite metadata
+    let fused = {
+      title,
+      iconSVG,
+      thumbDataUrl: apps[0].thumbDataUrl || '',
+      type: 'fusion',
+      content: '',
+      compositeUrls: [],
+      domain: Array.from(domainSet).slice(0,1)[0] || null,
+      timestamp: Date.now(),
+      fusion: true
+    };
+    // Build content / compositeUrls
+    apps.forEach(a=>{
+      if(a.type === 'file') fused.content += '\n<!-- app: '+a.title+' -->\n' + (a.content || '') + '\n';
+      if(a.type === 'url') fused.compositeUrls.push(a.content);
+    });
+
+    // Save fused and remove old ones
+    const id = await this.put(fused);
+    // delete originals
+    const tx2 = this.db.transaction(DB.store,'readwrite');
+    const store2 = tx2.objectStore(DB.store);
+    sel.forEach(sid => store2.delete(sid));
+    tx2.oncomplete = ()=>{ UI.clearSelection(); this.loadApps(); alert('Fusão criada'); }
+  }
+};
+
+/* =========================================================
+   UI: rendering, clipboard injection, preview and helpers
+========================================================= */
+const UI = {
+  appScroll: document.getElementById('appScroll'),
+  modal: document.getElementById('modal'),
+  modalContent: document.getElementById('modalContent'),
+  selectedIds: [],
+  editing:false,
+
+  init(){
+    this.updateClock();
+    setInterval(()=>this.updateClock(),1000);
+    document.getElementById('injectFab').addEventListener('click', ()=>this.onInjectClick());
+    // close modal on outside click
+    this.modal.addEventListener('click', (e)=>{ if(e.target === this.modal) this.closeModal(); });
+    // close viewer on escape
+    document.addEventListener('keydown',(e)=>{ if(e.key==='Escape'){ this.closeModal(); this.closeViewer(); } });
+  },
+
+  updateClock(){
+    const d = new Date();
+    document.getElementById('clock').textContent = d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  },
+
+  /** Main render: group by domain/type */
+  renderGroups(items){
+    this.appScroll.innerHTML = '';
+    if(!items || items.length === 0){
+      this.appScroll.innerHTML = `<div class="empty-state"><div class="empty-icon">💠</div><div>Deck Vazio.<br>Injete um app pelo clipboard ou arquivo.</div></div>`;
+      return;
+    }
+    // Grouping: domain (for urls) else 'Local' or 'Fusion'
+    const groups = {};
+    items.forEach(it=>{
+      let key = 'Local';
+      if(it.type === 'url') key = it.domain || extractDomain(it.content) || 'Web';
+      if(it.type === 'fusion') key = 'Fusões';
+      if(!groups[key]) groups[key] = [];
+      groups[key].push(it);
+    });
+
+    // Render each group collapsible
+    Object.keys(groups).sort().forEach(key=>{
+      const groupEl = document.createElement('div');
+      groupEl.className = 'group';
+      const header = document.createElement('div');
+      header.className = 'group-header';
+      header.innerHTML = `<div class="group-title">${escapeHtml(key)}</div><div class="group-count">${groups[key].length}</div>`;
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      header.addEventListener('click', ()=>{ grid.style.display = grid.style.display === 'none' ? 'grid' : 'none'; });
+      groups[key].forEach(app=>{
+        const card = document.createElement('div');
+        card.className = 'app-card';
+        card.dataset.id = app.id;
+        // icon: if thumbDataUrl present, use img, else render inline SVG icon
+        const iconHtml = app.thumbDataUrl ? `<img src="${app.thumbDataUrl}" alt="" style="width:100%;height:100%;object-fit:cover">`
+                        : (app.iconSVG ? app.iconSVG : `<div style="font-size:1.6rem">${escapeHtml(app.icon || '⚡')}</div>`);
+        card.innerHTML = `
+          <button class="delete-btn" title="Deletar" onclick="event.stopPropagation(); Engine.delete(${app.id})">✕</button>
+          <div class="app-icon">${iconHtml}<div class="type-dot type-${app.type}"></div></div>
+          <div class="app-name">${escapeHtml(app.title)}</div>
+        `;
+        // click/selection
+        card.onclick = (e)=>{
+          if(document.body.classList.contains('editing')){
+            e.stopPropagation();
+            this.toggleSelect(app.id, card);
+            return;
+          }
+          Engine.launch(app.id);
+        };
+        // long press for editing (touch desktop fallback click+ctrl)
+        let timer=null;
+        const start = ()=>{ timer = setTimeout(()=>{ document.body.classList.add('editing'); this.editing = true; this.toggleSelect(app.id, card); }, 450); }
+        const end = ()=>{ if(timer) clearTimeout(timer) };
+        card.addEventListener('mousedown', start); card.addEventListener('touchstart', start);
+        card.addEventListener('mouseup', end); card.addEventListener('mouseleave', end); card.addEventListener('touchend', end);
+
+        grid.appendChild(card);
+      });
+      groupEl.appendChild(header);
+      groupEl.appendChild(grid);
+      this.appScroll.appendChild(groupEl);
+    });
+    // show fuseBar when in editing & has more than 1 selected
+    this.updateFuseBar();
+  },
+
+  toggleSelect(id, cardEl){
+    const idx = this.selectedIds.indexOf(id);
+    if(idx === -1){ this.selectedIds.push(id); cardEl.classList.add('selected'); }
+    else { this.selectedIds.splice(idx,1); cardEl.classList.remove('selected'); }
+    this.updateFuseBar();
+  },
+
+  clearSelection(){
+    this.selectedIds = [];
+    document.body.classList.remove('editing');
+    this.editing = false;
+    // remove visual selection
+    document.querySelectorAll('.app-card.selected').forEach(el=>el.classList.remove('selected'));
+    this.updateFuseBar();
+  },
+
+  updateFuseBar(){
+    const bar = document.getElementById('fuseBar');
+    if(document.body.classList.contains('editing') && this.selectedIds.length >= 1){
+      bar.style.display = 'flex';
+    } else {
+      bar.style.display = 'none';
+    }
+  },
+
+  openModal(contentHtml){
+    this.modalContent.innerHTML = contentHtml || '';
+    this.modal.classList.add('active');
+  },
+  closeModal(){ this.modal.classList.remove('active'); },
+
+  openViewer(title, url){
+    document.getElementById('viewTitle').textContent = title;
+    document.getElementById('appFrame').src = url;
+    document.getElementById('viewer').classList.add('active');
+  },
+  closeViewer(){
+    document.getElementById('viewer').classList.remove('active');
+    setTimeout(()=>{ document.getElementById('appFrame').src='about:blank'; }, 400);
+  },
+
+  /* Helpers for preview: create procedural svg thumb and icon */
+  svgDataUrlForText(text, bgColor, fgColor){
+    const initials = (text || '').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() || 'ID';
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'>
+      <rect width='100%' height='100%' rx='20' fill='${bgColor}' />
+      <text x='50%' y='54%' text-anchor='middle' font-family='Montserrat,sans-serif' font-size='96' fill='${fgColor}' font-weight='700'>${escapeHtml(initials)}</text>
+    </svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  },
+
+  /* Simple composite icon builder for fusion result */
+  makeCompositeIconSVG(apps){
+    // build stacked colored squares with initials
+    const parts = apps.slice(0,4).map((a,i)=>{
+      const color = hashToColor(a.title||a.domain||'x'+i);
+      const initials = (a.title||'').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase()||'ID';
+      const x = 8 + i*10;
+      const y = 8 + i*6;
+      return `<rect x="${x}" y="${y}" width="64" height="64" rx="10" fill="${color}" opacity="${0.9 - i*0.15}"></rect>
+              <text x="${x+32}" y="${y+38}" text-anchor="middle" font-family="Montserrat" font-size="18" fill="#000" font-weight="700">${escapeHtml(initials)}</text>`;
+    }).join('');
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='84' height='84'><rect width='100%' height='100%' rx='14' fill='#0f1219'/>${parts}</svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+};
+
+/* =========================================================
+   Injection flow: read clipboard, detect url/file/text, preview and save
+========================================================= */
+
+document.getElementById('injectFab').addEventListener('contextmenu', e=>e.preventDefault());
+
+UI.onInjectClick = async function(){
+  // Try clipboard
+  let clip = '';
+  try{
+    clip = await navigator.clipboard.readText();
+  }catch(err){
+    // permission denied or not available
+    clip = '';
+  }
+  // If clipboard is url-like, show quick preview
+  if(clip && isLikelyUrl(clip)){
+    // build preview and attempt to fetch metadata
+    const preview = await buildPreviewFromUrl(clip);
+    const html = renderInjectionPreview(preview);
+    UI.openModal(html);
+    // attach handlers
+    document.getElementById('injectConfirm').onclick = async ()=>{
+      // create app object and save
+      const app = {
+        title: preview.title || shortenDomain(preview.url),
+        iconSVG: preview.iconSVG || null,
+        thumbDataUrl: preview.thumb || '',
+        type: 'url',
+        content: preview.url,
+        domain: preview.domain,
+        timestamp: Date.now()
+      };
+      await Engine.put(app);
+      UI.closeModal();
+    };
+    document.getElementById('injectEdit').onclick = ()=>{
+      // show full create form to adjust
+      UI.openModal(renderCreateForm(preview));
+      attachCreateFormHandlers();
+    };
+    document.getElementById('injectCancel').onclick = ()=>UI.closeModal();
+    return;
+  }
+
+  // Otherwise, open classic modal to choose file/url manually
+  UI.openModal(renderCreateForm());
+  attachCreateFormHandlers();
+};
+
+/* Build preview object from url: try fetch title & og:image with CORS fallback */
+async function buildPreviewFromUrl(url){
+  const domain = extractDomain(url);
+  let title = null, ogImage = null, iconSVG=null, thumb=null;
+  try{
+    // Attempt to fetch HTML (may fail due to CORS)
+    const res = await fetch(url, {mode:'cors'});
+    const html = await res.text();
+    const mTitle = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if(mTitle) title = mTitle[1].trim();
+    const og = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+    if(og) ogImage = new URL(og[1], url).toString();
+  }catch(e){
+    // ignore - fallback
+  }
+  // fallback title
+  if(!title) title = shortenDomain(url);
+  // favicon fallback
+  try {
+    const fav = `https://www.google.com/s2/favicons?sz=128&domain=${domain}`;
+    thumb = fav;
+  } catch(e){}
+  // procedural icon if no external
+  iconSVG = UI.svgDataUrlForText(title, hashToColor(title), '#000');
+  return { url, domain, title, ogImage, thumb, iconSVG };
+}
+
+/* Render injection preview html */
+function renderInjectionPreview(preview){
+  return `
+    <div>
+      <h3 class="modal-title">Injetar Link</h3>
+      <div class="row" style="gap:12px;margin-bottom:14px">
+        <div class="preview-thumb"><img src="${escapeAttr(preview.ogImage||preview.thumb||preview.iconSVG)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px" alt=""></div>
+        <div class="preview-meta">
+          <div style="font-weight:800">${escapeHtml(preview.title)}</div>
+          <div class="muted">${escapeHtml(preview.domain)} • ${escapeHtml(preview.url)}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button id="injectCancel" class="btn btn-ghost">Cancelar</button>
+        <button id="injectEdit" class="btn btn-ghost">Ajustar</button>
+        <button id="injectConfirm" class="btn btn-primary">Injetar no Deck</button>
+      </div>
+    </div>
+  `;
+}
+
+/* Render the create form (used for manual file/url or for adjust) */
+function renderCreateForm(preview = {}){
+  const titleVal = preview.title ? `value="${escapeAttr(preview.title)}"` : '';
+  const urlVal = preview.url ? `value="${escapeAttr(preview.url)}"` : '';
+  return `
+    <div>
+      <h3 class="modal-title">Novo Módulo Neural</h3>
+      <div class="tabs" style="margin-bottom:12px">
+        <button class="tab active" data-tab="file">Arquivo .HTML</button>
+        <button class="tab" data-tab="url">Link Web</button>
+      </div>
+      <div style="margin-bottom:12px">
+        <label class="form-label">Nome do App</label>
+        <input id="appName" class="glass-input" placeholder="Ex: Dashboard V1" ${titleVal}>
+      </div>
+      <div id="fileRow" style="margin-bottom:12px">
+        <label class="form-label">Arquivo (Salvo Localmente)</label>
+        <input type="file" id="appFile" class="glass-input" accept=".html">
+      </div>
+      <div id="urlRow" style="display:none;margin-bottom:12px">
+        <label class="form-label">URL (https://)</label>
+        <input id="appUrl" class="glass-input" placeholder="https://app.com" ${urlVal}>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+        <button class="btn btn-ghost" id="cancelCreate">Cancelar</button>
+        <button class="btn btn-primary" id="saveCreate">Cristalizar App</button>
+      </div>
+    </div>
+  `;
+}
+
+/* attach handlers for create form inside modal */
+function attachCreateFormHandlers(){
+  // tab logic
+  document.querySelectorAll('.tab').forEach(t=>t.onclick = (e)=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    const mode = t.dataset.tab;
+    document.getElementById('fileRow').style.display = mode === 'file' ? 'block' : 'none';
+    document.getElementById('urlRow').style.display = mode === 'url' ? 'block' : 'none';
+  });
+  document.getElementById('cancelCreate').onclick = ()=>UI.closeModal();
+  document.getElementById('saveCreate').onclick = async ()=>{
+    const name = document.getElementById('appName').value.trim() || 'App Sem Nome';
+    const activeTab = document.querySelector('.tab.active').dataset.tab;
+    let app = { title:name, type: activeTab === 'file' ? 'file' : 'url', timestamp: Date.now(), domain:null };
+    if(activeTab === 'file'){
+      const fi = document.getElementById('appFile');
+      const file = fi.files[0];
+      if(!file){ alert('Selecione um arquivo .html'); return; }
+      const txt = await file.text();
+      app.content = txt;
+      app.thumbDataUrl = UI.svgDataUrlForText(name, hashToColor(name), '#000');
+    } else {
+      const url = document.getElementById('appUrl').value.trim();
+      if(!isLikelyUrl(url)){ alert('Digite uma URL válida (https://...)'); return; }
+      app.content = url;
+      app.domain = extractDomain(url);
+      app.thumbDataUrl = `https://www.google.com/s2/favicons?sz=128&domain=${app.domain}`;
+    }
+    await Engine.put(app);
+    UI.closeModal();
+  };
+}
+
+/* ====================================================
+   Small util helpers
+==================================================== */
+function isLikelyUrl(s){ try{ const u = new URL(s); return ['http:','https:'].includes(u.protocol); }catch(e){return false} }
+function extractDomain(url){ try{ return (new URL(url)).hostname.replace('www.',''); }catch(e){return null} }
+function shortenDomain(url){ const d = extractDomain(url); if(!d) return url; return d.split('.')[0]; }
+function escapeHtml(str){ if(!str) return ''; return String(str).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+
+/* simple deterministic color from string */
+function hashToColor(s){
+  let h=0; for(let i=0;i<s.length;i++) h = s.charCodeAt(i) + ((h<<5)-h);
+  const c = (h & 0x00FFFFFF).toString(16).toUpperCase();
+  return '#' + '00000'.substring(0,6 - c.length) + c;
+}
+
+/* Simple wrappers for Engine to call from UI HTML (for delete and fuse) */
+Engine.fuseSelected = ()=>Engine.fuseSelected?.();
+Engine.delete = (id)=>Engine.delete?.(id);
+
+/* Boot */
+window.addEventListener('load', async ()=>{
+  UI.init();
+  await Engine.init();
+});
+
+/* Expose function used in HTML */
+window.Engine = Engine;
+window.UI = UI;
+
+/* End */
+</script>
+</body>
+</html>

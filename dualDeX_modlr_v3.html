@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>InfoDose · Neural Forge (Injeção Direta)</title>
+  <meta name="theme-color" content="#050811" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
+  <style>
+    :root{
+      --bg:#050811;--surface:#0f1219;--primary:#00f5ff;--primary-glow:rgba(0,245,255,0.3);
+      --secondary:#bd00ff;--text:#e4ecff;--muted:#4a5568;--border:rgba(255,255,255,0.08);--danger:#ff4b6b;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{height:100%}
+    body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+    .nebula{position:fixed;inset:0;background:radial-gradient(circle at 10% 10%, var(--primary-glow) 0%, transparent 40%), radial-gradient(circle at 90% 90%, rgba(189,0,255,0.12) 0%, transparent 40%);z-index:-1;pointer-events:none;opacity:0.6}
+
+    .header{padding:18px 22px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(to bottom,var(--bg),transparent);z-index:10}
+    .brand{display:flex;flex-direction:column}
+    .brand h1{margin:0;font-size:1rem;font-weight:800;letter-spacing:2px}
+    .brand h1 span{color:var(--primary)}
+    #clock{font-family:'JetBrains Mono';font-size:12px;color:var(--primary)}
+
+    .deck{flex:1;overflow-y:auto;padding:18px 18px;display:grid;grid-template-columns:repeat(auto-fill,minmax(85px,1fr));gap:22px 14px;scrollbar-width:none}
+    .deck::-webkit-scrollbar{display:none}
+
+    .card{display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;position:relative;transition:transform .18s}
+    .card:active{transform:scale(.96)}
+    .icon-box{width:72px;height:72px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:22px;display:flex;align-items:center;justify-content:center;transition:all .18s}
+    .card:hover .icon-box{border-color:var(--primary);box-shadow:0 0 20px var(--primary-glow);background:rgba(0,245,255,0.03)}
+    .app-name{font-size:.66rem;font-weight:700;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.7;text-transform:uppercase}
+
+    .controls{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:100}
+    .btn-fab{height:54px;padding:0 18px;border-radius:27px;border:none;font-weight:800;font-size:.9rem;display:flex;align-items:center;gap:10px;cursor:pointer;box-shadow:0 12px 30px rgba(0,0,0,.45)}
+    .btn-inject{background:var(--primary);color:#000}
+    .btn-crystal{background:var(--secondary);color:#fff;display:none}
+
+    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:1000;display:none;align-items:center;justify-content:center;padding:20px}
+    .modal-overlay.active{display:flex}
+    .modal-card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:20px}
+
+    .viewer{position:fixed;inset:0;background:#000;z-index:2000;display:none;flex-direction:column}
+    .viewer.active{display:flex}
+    .viewer-bar{height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid #111}
+    iframe{flex:1;border:none;background:#fff}
+
+    .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:110px;background:rgba(0,0,0,0.7);color:var(--text);padding:10px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.04);z-index:110;opacity:0;transition:opacity .25s}
+    .toast.show{opacity:1}
+
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <div class="nebula"></div>
+
+  <header class="header">
+    <div class="brand">
+      <h1>INF<span>ODOSE</span></h1>
+      <small style="color:var(--muted);font-size:11px">Neural Forge — Injeção Direta</small>
+    </div>
+    <div id="clock">00:00</div>
+  </header>
+
+  <main id="appDeck" class="deck">
+    <!-- cards -->
+  </main>
+
+  <div class="controls">
+    <button id="injectBtn" class="btn-fab btn-inject" title="Injetar (tenta direto do clipboard)">
+      ⧉ INJETAR
+    </button>
+    <button id="crystalBtn" class="btn-fab btn-crystal" title="Cristalizar selecionados">
+      LAYER CRISTAL
+      <span id="selectCount" style="margin-left:8px">0</span>
+    </button>
+  </div>
+
+  <!-- modal (fallback manual flows) -->
+  <div id="modal" class="modal-overlay" onclick="if(event.target===this) UI.closeModal()">
+    <div class="modal-card" id="modalCard"></div>
+  </div>
+
+  <!-- viewer -->
+  <div id="viewer" class="viewer">
+    <div class="viewer-bar">
+      <div id="viewTitle" style="font-weight:700;color:var(--primary)">MODULE</div>
+      <button onclick="UI.closeViewer()" style="background:rgba(255,255,255,0.04);border:none;color:white;width:36px;height:36px;border-radius:50%;cursor:pointer">✕</button>
+    </div>
+    <iframe id="appFrame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+  </div>
+
+  <!-- invisible file input used for direct upload -->
+  <input id="hiddenFile" type="file" accept=".html" class="hidden">
+
+  <div id="toast" class="toast">Injetado</div>
+
+<script>
+/* ======================================================
+   Direct-inject friendly version:
+   - Clicking INJETAR tries clipboard; if URL -> auto-save (1 tap)
+   - If clipboard empty or not URL, opens small modal with quick options:
+       * Upload file (file picker opens and auto-saves on selection)
+       * Paste URL (single prompt then auto-save)
+   - Minimal UX friction, toast confirmations.
+======================================================*/
+
+const DB_NAME = 'InfoDose_Forge_V3_direct';
+const STORE = 'neural_modules';
+
+const Engine = {
+  db: null,
+  async init(){
+    return new Promise((res)=>{
+      const r = indexedDB.open(DB_NAME, 4);
+      r.onupgradeneeded = e => {
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE,{keyPath:'id',autoIncrement:true});
+      };
+      r.onsuccess = e => { this.db = e.target.result; this.load(); res(); };
+      r.onerror = ()=>{ console.warn('IDB fail'); res(); };
+    });
+  },
+
+  async addFromUrl(url){
+    // quick create app object immediately (no confirm)
+    const domain = extractDomain(url);
+    const title = shortenDomain(url);
+    // attempt to fetch title (best-effort; CORS may fail)
+    try {
+      const res = await fetch(url, {mode:'cors'});
+      const txt = await res.text();
+      const m = txt.match(/<title[^>]*>([^<]+)</i);
+      if(m && m[1]) { 
+        // prefer page title
+        // limit length
+        const t = m[1].trim();
+        if(t.length>0) {
+          // use it
+        }
+      }
+    } catch(e){}
+    const app = { title: title, type:'url', content:url, domain, thumb:`https://www.google.com/s2/favicons?sz=128&domain=${domain}`, timestamp: Date.now() };
+    this.save(app);
+    UI.toast('Link injetado');
+  },
+
+  async addFromFile(file){
+    try{
+      const txt = await file.text();
+      const title = file.name.replace(/\.html?$|\.HTM/i,'') || 'App Local';
+      const app = { title, type:'file', content: txt, group:'IMPORTADOS', thumb: UI.svgDataUrlForText(title, hashToColor(title), '#000'), timestamp: Date.now() };
+      this.save(app);
+      UI.toast('Arquivo importado');
+    }catch(e){ alert('Erro ao ler arquivo'); }
+  },
+
+  save(app){
+    if(!this.db){
+      alert('Banco não inicializado');
+      return;
+    }
+    const tx = this.db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).add(app);
+    tx.oncomplete = ()=> this.load();
+  },
+
+  async load(){
+    if(!this.db) return;
+    const tx = this.db.transaction(STORE,'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => UI.render(req.result || []);
+  },
+
+  delete(id){
+    if(!confirm('Desintegrar este módulo?')) return;
+    const tx = this.db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = ()=> this.load();
+  },
+
+  async launch(id){
+    const tx = this.db.transaction(STORE,'readonly');
+    const req = tx.objectStore(STORE).get(id);
+    req.onsuccess = () => {
+      const app = req.result;
+      if(!app) return;
+      let url;
+      if(app.type === 'file') url = URL.createObjectURL(new Blob([app.content], {type:'text/html'}));
+      else url = app.content;
+      UI.openViewer(app.title, url);
+    };
+  }
+
+};
+
+/* ======================================================
+   UI
+======================================================*/
+const UI = {
+  deck: document.getElementById('appDeck'),
+  modal: document.getElementById('modal'),
+  modalCard: document.getElementById('modalCard'),
+  hiddenFile: document.getElementById('hiddenFile'),
+  toastEl: document.getElementById('toast'),
+  toastTimer: null,
+
+  init(){
+    // clock
+    setInterval(()=> document.getElementById('clock').textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}), 1000);
+
+    // inject button
+    document.getElementById('injectBtn').addEventListener('click', ()=> UI.handleInjectClick());
+
+    // hidden file auto-save
+    this.hiddenFile.addEventListener('change', async (ev)=>{
+      const f = ev.target.files[0];
+      if(f) await Engine.addFromFile(f);
+      // reset to allow same file later
+      ev.target.value = '';
+      UI.closeModal();
+    });
+
+    // initial attempt: silently detect clipboard url to hint user (non-blocking)
+    (async ()=>{
+      try{
+        const t = await navigator.clipboard.readText();
+        if(t && isUrl(t)) document.getElementById('injectBtn').title = 'Injetar (link detectado no clipboard)';
+      }catch(e){}
+    })();
+  },
+
+  async handleInjectClick(){
+    // Primary goal: do it in 1 tap when possible.
+    // 1) Try clipboard readText -> if URL => auto-save and return
+    try{
+      const txt = await navigator.clipboard.readText();
+      if(txt && isUrl(txt.trim())){
+        // auto inject
+        Engine.addFromUrl(txt.trim());
+        return;
+      }
+    } catch(e){
+      // readText may fail due permissions; continue to fallback modal
+    }
+    // 2) If no url in clipboard, open small modal with two clear options:
+    this.openModal(this.renderQuickOptions());
+  },
+
+  render(apps){
+    this.deck.innerHTML = '';
+    if(!apps || apps.length === 0){
+      this.deck.innerHTML = `<div style="text-align:center;padding:100px 0;opacity:.14"><h3>DECK VAZIO</h3><p>Aguardando injeção direta...</p></div>`;
+      return;
+    }
+    apps.forEach(app=>{
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.innerHTML = `
+        <div class="icon-box">${ app.thumb ? `<img src="${escapeAttr(app.thumb)}" style="width:100%;height:100%;object-fit:cover">` : `<div style="font-size:1.6rem">${escapeHtml((app.title||'ID').slice(0,2))}</div>` }</div>
+        <div class="app-name">${escapeHtml(app.title)}</div>
+      `;
+      el.addEventListener('click', ()=> Engine.launch(app.id));
+      // long press to delete
+      let t;
+      el.onmousedown = el.ontouchstart = ()=> t = setTimeout(()=> { if(confirm('Deletar?')) Engine.delete(app.id); }, 800);
+      el.onmouseup = el.ontouchend = el.onmouseleave = ()=> { if(t) clearTimeout(t); };
+      this.deck.appendChild(el);
+    });
+  },
+
+  openModal(contentHtml){
+    this.modalCard.innerHTML = contentHtml;
+    this.modal.classList.add('active');
+  },
+  closeModal(){ this.modal.classList.remove('active'); },
+
+  renderQuickOptions(){
+    return `
+      <h3 style="margin-top:0;color:var(--primary)">Injeção Rápida</h3>
+      <div style="display:grid;gap:12px">
+        <button style="padding:12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-weight:800" id="quickPasteBtn">Colar do Clipboard (ou detectar)</button>
+        <button style="padding:12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--text);font-weight:800" id="quickUploadBtn">Selecionar Arquivo (.html)</button>
+        <button style="padding:12px;border-radius:12px;border:1px solid var(--border);background:transparent;color:var(--muted)" id="quickCancel">Cancelar</button>
+      </div>
+    `;
+  },
+
+  toast(msg, ms=1500){
+    clearTimeout(this.toastTimer);
+    this.toastEl.textContent = msg;
+    this.toastEl.classList.add('show');
+    this.toastTimer = setTimeout(()=> this.toastEl.classList.remove('show'), ms);
+  },
+
+  async promptAndInjectUrl(){
+    // Try clipboard first
+    try{
+      const txt = await navigator.clipboard.readText();
+      if(txt && isUrl(txt.trim())){
+        Engine.addFromUrl(txt.trim());
+        this.closeModal();
+        return;
+      }
+    }catch(e){}
+    // Fallback: prompt manual paste
+    const val = prompt('Cole a URL do módulo:');
+    if(val && isUrl(val.trim())){
+      Engine.addFromUrl(val.trim());
+      this.closeModal();
+    } else if(val) {
+      alert('URL inválida');
+    }
+  },
+
+  svgDataUrlForText(text, bgColor, fgColor){
+    const initials = (text||'').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase() || 'ID';
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256'><rect width='100%' height='100%' rx='28' fill='${bgColor}'/><text x='50%' y='56%' text-anchor='middle' font-family='Plus Jakarta Sans, sans-serif' font-size='96' fill='${fgColor}' font-weight='800'>${escapeHtml(initials)}</text></svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+};
+
+/* ======================================================
+   Helpers
+======================================================*/
+function isUrl(s){ try{ const u=new URL(s); return ['http:','https:'].includes(u.protocol); }catch(e){return false} }
+function extractDomain(url){ try{ return (new URL(url)).hostname.replace(/^www\./,''); }catch(e){return null} }
+function shortenDomain(url){ const d = extractDomain(url); if(!d) return url; return d.split('.')[0]; }
+function escapeHtml(s){ if(!s) return ''; return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escapeAttr(s){ return (s||'').replace(/"/g,'&quot;'); }
+function hashToColor(s){ let h=0; for(let i=0;i<s.length;i++) h = s.charCodeAt(i) + ((h<<5)-h); const c=(h & 0x00FFFFFF).toString(16).toUpperCase(); return '#'+('00000'.substring(0,6-c.length))+c; }
+
+/* ======================================================
+   Wire up quick modal actions (delegated)
+======================================================*/
+document.addEventListener('click', (e)=>{
+  if(!e.target) return;
+  // quick options buttons created dynamically
+  if(e.target.id === 'quickPasteBtn' || e.target.closest('#quickPasteBtn')){
+    UI.promptAndInjectUrl();
+  }
+  if(e.target.id === 'quickUploadBtn' || e.target.closest('#quickUploadBtn')){
+    // open file picker; hiddenFile handler auto-saves
+    UI.hiddenFile.click();
+  }
+  if(e.target.id === 'quickCancel' || e.target.closest('#quickCancel')){
+    UI.closeModal();
+  }
+});
+
+/* ======================================================
+   Boot
+======================================================*/
+window.addEventListener('load', async ()=>{
+  UI.init();
+  await Engine.init();
+  // expose to console for debug
+  window.Engine = Engine;
+  window.UI = UI;
+});
+
+/* Small poly-safe exposure for other code */
+window.Engine = Engine;
+window.UI = UI;
+</script>
+</body>
+</html>

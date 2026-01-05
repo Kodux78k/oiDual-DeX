@@ -1,0 +1,337 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Zap, 
+  Plus, 
+  Layers, 
+  X, 
+  ExternalLink, 
+  FileCode, 
+  Trash2, 
+  Check,
+  ChevronRight,
+  Maximize2,
+  Box
+} from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  deleteDoc, 
+  doc, 
+  query 
+} from 'firebase/firestore';
+
+// --- CONFIGURAÇÃO ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'infodose-neural-deck';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [modules, setModules] = useState([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFusionMode, setIsFusionMode] = useState(false);
+  const [selectedForFusion, setSelectedForFusion] = useState([]);
+  const [activeApp, setActiveApp] = useState(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // --- AUTH & DATA ---
+  useEffect(() => {
+    const initAuth = async () => {
+      await signInAnonymously(auth);
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = collection(db, 'artifacts', appId, 'public', 'data', 'modules');
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setModules(docs);
+    }, (err) => console.error("Firestore Error:", err));
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // --- ACTIONS ---
+  const injectModule = async (type) => {
+    let title, content;
+    if (type === 'url') {
+      const url = prompt("Cole a URL do módulo:");
+      if (!url) return;
+      title = prompt("Nome do Módulo:", "Nova Conexão");
+      content = url;
+    } else {
+      // Mock para arquivo (em ambiente React, o upload seria via FileReader)
+      title = "Novo Script Local";
+      content = "<h1>Módulo Local Ativo</h1>";
+    }
+
+    if (title && content) {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'modules'), {
+        title,
+        content,
+        type,
+        group: 'GERAL',
+        isHybrid: false,
+        timestamp: Date.now()
+      });
+      setIsModalOpen(false);
+    }
+  };
+
+  const deleteModule = async (id, e) => {
+    e.stopPropagation();
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'modules', id));
+  };
+
+  const toggleFusionSelection = (id) => {
+    if (selectedForFusion.includes(id)) {
+      setSelectedForFusion(prev => prev.filter(item => item !== id));
+    } else {
+      setSelectedForFusion(prev => [...prev, id]);
+    }
+  };
+
+  const finalizeFusion = async () => {
+    if (selectedForFusion.length < 2) return;
+    const fusionName = prompt("Nome da Cristalização Híbrida:", "Fusão Neural");
+    if (!fusionName) return;
+
+    const hybridData = {
+      title: fusionName,
+      type: 'hybrid',
+      group: 'CRISTALIZADOS',
+      isHybrid: true,
+      children: modules.filter(m => selectedForFusion.includes(m.id)),
+      timestamp: Date.now()
+    };
+
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'modules'), hybridData);
+    setIsFusionMode(false);
+    setSelectedForFusion([]);
+  };
+
+  // --- RENDER HELPERS ---
+  const renderIcon = (type, isHybrid) => {
+    if (isHybrid) return <Layers className="w-8 h-8 text-purple-400" />;
+    if (type === 'url') return <ExternalLink className="w-8 h-8 text-cyan-400" />;
+    return <FileCode className="w-8 h-8 text-emerald-400" />;
+  };
+
+  return (
+    <div className="min-h-screen bg-[#050811] text-[#e4ecff] font-sans selection:bg-cyan-500/30">
+      {/* Nebula Background */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[120px] rounded-full animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-500/10 blur-[120px] rounded-full animate-pulse" />
+      </div>
+
+      {/* Header */}
+      <header className="relative z-10 p-6 flex justify-between items-center border-b border-white/5 bg-black/20 backdrop-blur-md">
+        <div>
+          <h1 className="text-xl font-extrabold tracking-tighter italic">
+            INFODOSE <span className="text-cyan-400 not-italic">DECK v3</span>
+          </h1>
+          <p className="text-[10px] text-gray-500 font-mono uppercase tracking-[3px]">Neural Synthesis System</p>
+        </div>
+        <div className="text-right font-mono">
+          <div className="text-cyan-400 text-sm">{currentTime.toLocaleTimeString()}</div>
+          <div className="text-[9px] text-gray-600">{modules.length} MÓDULOS ATIVOS</div>
+        </div>
+      </header>
+
+      {/* Main Deck */}
+      <main className="relative z-10 p-6 pb-32">
+        {isFusionMode && (
+          <div className="mb-8 p-4 bg-purple-500/10 border border-purple-500/30 rounded-2xl flex justify-between items-center animate-in fade-in slide-in-from-top-4">
+            <div>
+              <h3 className="text-purple-300 font-bold text-sm">Modo de Cristalização</h3>
+              <p className="text-[10px] text-purple-400/70 uppercase">Selecione os módulos para fundir</p>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={finalizeFusion}
+                disabled={selectedForFusion.length < 2}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedForFusion.length >= 2 ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`}
+              >
+                CRISTALIZAR ({selectedForFusion.length})
+              </button>
+              <button onClick={() => {setIsFusionMode(false); setSelectedForFusion([]);}} className="p-2 text-gray-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-6">
+          {modules.map((mod) => (
+            <div 
+              key={mod.id}
+              onClick={() => isFusionMode ? toggleFusionSelection(mod.id) : setActiveApp(mod)}
+              className={`group relative flex flex-col items-center gap-3 transition-all duration-300 cursor-pointer ${isFusionMode && selectedForFusion.includes(mod.id) ? 'scale-105' : ''}`}
+            >
+              <div className={`
+                relative w-16 h-16 sm:w-20 sm:h-20 rounded-[24px] border flex items-center justify-center transition-all duration-300
+                ${isFusionMode && selectedForFusion.includes(mod.id) 
+                  ? 'bg-purple-500/20 border-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.4)]' 
+                  : 'bg-white/5 border-white/10 group-hover:border-cyan-400/50 group-hover:bg-white/10 group-hover:shadow-[0_0_20px_rgba(0,245,255,0.2)]'}
+              `}>
+                {renderIcon(mod.type, mod.isHybrid)}
+                
+                {isFusionMode && (
+                  <div className={`absolute -top-2 -right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${selectedForFusion.includes(mod.id) ? 'bg-purple-500 border-white' : 'bg-black/50 border-white/20'}`}>
+                    {selectedForFusion.includes(mod.id) && <Check size={12} className="text-white" />}
+                  </div>
+                )}
+
+                {!isFusionMode && (
+                  <button 
+                    onClick={(e) => deleteModule(mod.id, e)}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+              <span className="text-[10px] sm:text-xs font-semibold text-center truncate w-full px-1 opacity-70 group-hover:opacity-100 transition-opacity uppercase tracking-wider">
+                {mod.title}
+              </span>
+            </div>
+          ))}
+
+          {/* Botão de Atalho para Cristalização */}
+          {!isFusionMode && modules.length >= 2 && (
+            <div 
+              onClick={() => setIsFusionMode(true)}
+              className="flex flex-col items-center gap-3 group cursor-pointer opacity-40 hover:opacity-100 transition-all"
+            >
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-[24px] border border-dashed border-white/20 flex items-center justify-center group-hover:border-purple-400 group-hover:bg-purple-500/5">
+                <Layers className="w-8 h-8 text-gray-500 group-hover:text-purple-400" />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500 group-hover:text-purple-400">Fundir</span>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Control Bar */}
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-black/60 backdrop-blur-xl p-2 rounded-full border border-white/10 shadow-2xl z-50">
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-cyan-400 text-black font-black text-xs rounded-full hover:scale-105 transition-transform"
+        >
+          <Plus size={18} strokeWidth={3} />
+          INJETAR
+        </button>
+      </div>
+
+      {/* Injections Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-full max-w-md bg-[#0f1219] rounded-[32px] border border-white/10 p-8 shadow-2xl animate-in slide-in-from-bottom-8 duration-500">
+            <div className="flex justify-between items-center mb-8">
+              <h2 className="text-xl font-bold">Protocolo de Injeção</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full text-gray-500">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="grid gap-4">
+              <button onClick={() => injectModule('url')} className="w-full flex items-center gap-4 p-5 bg-white/5 border border-white/5 hover:border-cyan-400/50 hover:bg-cyan-400/5 rounded-2xl transition-all group">
+                <div className="p-3 bg-cyan-400/10 rounded-xl group-hover:bg-cyan-400/20 text-cyan-400">
+                  <ExternalLink size={24} />
+                </div>
+                <div className="text-left">
+                  <div className="font-bold text-sm">Link Neural (URL)</div>
+                  <div className="text-[10px] text-gray-500 uppercase">Conectar ferramenta externa</div>
+                </div>
+              </button>
+
+              <button onClick={() => injectModule('file')} className="w-full flex items-center gap-4 p-5 bg-white/5 border border-white/5 hover:border-emerald-400/50 hover:bg-emerald-400/5 rounded-2xl transition-all group">
+                <div className="p-3 bg-emerald-400/10 rounded-xl group-hover:bg-emerald-400/20 text-emerald-400">
+                  <FileCode size={24} />
+                </div>
+                <div className="text-left">
+                  <div className="font-bold text-sm">Script Local (.html)</div>
+                  <div className="text-[10px] text-gray-500 uppercase">Injetar código fonte isolado</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Neural Viewer (App Runner) */}
+      {activeApp && (
+        <div className="fixed inset-0 z-[1000] bg-black animate-in zoom-in-95 duration-300 flex flex-col">
+          <header className="h-16 bg-[#0a0a0a] border-b border-white/5 flex items-center justify-between px-6">
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-white/5 rounded-lg">
+                {renderIcon(activeApp.type, activeApp.isHybrid)}
+              </div>
+              <span className="font-bold text-sm tracking-tight uppercase">{activeApp.title}</span>
+              {activeApp.isHybrid && (
+                <span className="text-[8px] bg-purple-500 text-white px-2 py-0.5 rounded-full font-black">HYBRID CRYSTAL</span>
+              )}
+            </div>
+            <div className="flex gap-4">
+              <button className="text-gray-500 hover:text-white transition-colors"><Maximize2 size={18} /></button>
+              <button onClick={() => setActiveApp(null)} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-red-500 text-white rounded-full transition-all">
+                <X size={16} />
+              </button>
+            </div>
+          </header>
+
+          <div className="flex-1 bg-white relative">
+            {activeApp.isHybrid ? (
+              <div className="absolute inset-0 flex flex-col bg-[#050811]">
+                {/* Navegação de Cristalização (Tabs para os sub-apps) */}
+                <div className="flex bg-black/40 p-1 gap-1 border-b border-white/5">
+                  {activeApp.children?.map((child, idx) => (
+                    <button 
+                      key={idx}
+                      className="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest bg-white/5 border border-white/5 hover:border-cyan-400 text-gray-400 hover:text-cyan-400 transition-all"
+                      onClick={() => {
+                        // Lógica para trocar o iframe interno
+                        const iframe = document.getElementById('hybrid-frame');
+                        iframe.src = child.type === 'url' ? child.content : URL.createObjectURL(new Blob([child.content], {type: 'text/html'}));
+                      }}
+                    >
+                      {child.title}
+                    </button>
+                  ))}
+                </div>
+                <iframe 
+                  id="hybrid-frame"
+                  className="flex-1 w-full border-none"
+                  src={activeApp.children?.[0]?.type === 'url' ? activeApp.children[0].content : URL.createObjectURL(new Blob([activeApp.children?.[0]?.content || ""], {type: 'text/html'}))}
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                />
+              </div>
+            ) : (
+              <iframe 
+                className="w-full h-full border-none"
+                src={activeApp.type === 'url' ? activeApp.content : URL.createObjectURL(new Blob([activeApp.content], {type: 'text/html'}))}
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
